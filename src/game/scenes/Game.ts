@@ -15,9 +15,32 @@ export class Game extends Scene {
     this.load.image("marble_green", "marble_green.png");
     this.load.image("hole", "hole.png");
     this.load.image("cursor", "cursor.png");
+    this.load.image("game-logo", "game-logo.png");
   }
 
   create() {
+    const checkerboard = this.add.graphics().setDepth(-20);
+    const tileSize = 50;
+    const columns = Math.ceil(this.scale.width / tileSize);
+    const rows = Math.ceil(this.scale.height / tileSize);
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < columns; column++) {
+        const color = (row + column) % 2 === 0 ? 0xfff8e7 : 0xf4e6c8;
+        checkerboard.fillStyle(color, 1);
+        checkerboard.fillRect(
+          column * tileSize,
+          row * tileSize,
+          tileSize,
+          tileSize
+        );
+      }
+    }
+
+    this.add.image(20, 20, "game-logo")
+      .setOrigin(0, 0)
+      .setDisplaySize(390, 30)
+      .setDepth(300);
+
     const marbleImages: Phaser.GameObjects.Image[] = [];
     const holeImages: Phaser.GameObjects.Image[] = [];
     const marbleLabelTexts: Phaser.GameObjects.Text[] = [];
@@ -32,6 +55,42 @@ export class Game extends Scene {
       fontSize: 24,
       fontStyle: "bold",
     }).setOrigin(0.5).setDepth(201);
+    const orderHint = this.add.text(20, 1215, "시작 구멍에 가까운 구슬이 선입니다.", {
+      color: "#3d3022",
+      fontSize: 22,
+      fontStyle: "bold",
+      backgroundColor: "#fff8e7",
+      padding: { x: 10, y: 6 },
+      align: "left",
+    }).setOrigin(0, 0.5).setDepth(200).setVisible(false);
+    const firstHoleHint = this.add.text(
+      20,
+      1215,
+      "구멍에 넣으면서 전진합니다.\n다른 구슬 맞히면 점프합니다.",
+      {
+        color: "#3d3022",
+        fontSize: 22,
+        fontStyle: "bold",
+        lineSpacing: 16,
+        backgroundColor: "#fff8e7",
+        padding: { x: 10, y: 6 },
+        align: "left",
+      }
+    ).setOrigin(0, 0.5).setDepth(200).setVisible(false);
+    const lionHint = this.add.text(
+      20,
+      1215,
+      "사자 구슬은 다른 구슬을\n잡을 수 있습니다.",
+      {
+        color: "#3d3022",
+        fontSize: 22,
+        fontStyle: "bold",
+        lineSpacing: 16,
+        backgroundColor: "#fff8e7",
+        padding: { x: 10, y: 6 },
+        align: "left",
+      }
+    ).setOrigin(0, 0.5).setDepth(200).setVisible(false);
     const closeMarbleHint = this.add.text(
       -9990,
       0,
@@ -58,6 +117,12 @@ export class Game extends Scene {
     let lionPulseTween: Phaser.Tweens.Tween | null = null;
     let dragStart: { x: number; y: number } | null = null;
     let selectedCloseMarbleId: number | null = null;
+    let firstHoleHintActive = false;
+    let firstHoleTurnChanges = 0;
+    let lastFirstHoleHintMarbleId: number | null = null;
+    let lionHintActive = false;
+    let lionHintTurnChanges = 0;
+    let lastLionHintMarbleId: number | null = null;
 
     let init = false;
     const system = new System(4, (args) => {
@@ -111,6 +176,45 @@ export class Game extends Scene {
       startButton.setVisible(args.state === "ready");
       startButtonText.setVisible(args.state === "ready");
       startButtonText.setText("시작").setFontSize(24);
+      orderHint.setVisible(
+        !args.orderEstablished &&
+        args.state !== "ready" &&
+        args.state !== "revealing_order"
+      );
+      if (args.orderEstablished && args.state === "wait_move") {
+        if (lastFirstHoleHintMarbleId === null) {
+          firstHoleHintActive = true;
+          lastFirstHoleHintMarbleId = args.activeMarbleId;
+        } else if (args.activeMarbleId !== lastFirstHoleHintMarbleId) {
+          firstHoleTurnChanges += 1;
+          lastFirstHoleHintMarbleId = args.activeMarbleId;
+          if (firstHoleTurnChanges >= 4) {
+            firstHoleHintActive = false;
+          }
+        }
+      }
+      firstHoleHint.setVisible(firstHoleHintActive);
+      if (
+        args.orderEstablished &&
+        !lionHintActive &&
+        args.marbles.some((marble) => marble.lion)
+      ) {
+        lionHintActive = true;
+        lastLionHintMarbleId = args.activeMarbleId;
+      }
+      if (lionHintActive && args.state === "wait_move") {
+        if (lastLionHintMarbleId === null) {
+          lastLionHintMarbleId = args.activeMarbleId;
+        } else if (args.activeMarbleId !== lastLionHintMarbleId) {
+          lionHintTurnChanges += 1;
+          lastLionHintMarbleId = args.activeMarbleId;
+          if (lionHintTurnChanges >= 4) {
+            lionHintActive = false;
+          }
+        }
+      }
+      lionHint.setVisible(lionHintActive);
+      firstHoleHint.setVisible(firstHoleHintActive && !lionHintActive);
 
       // 실시간 구슬별 득점 현황 갱신
       args.marbles.forEach((marble, i) => {
@@ -229,23 +333,23 @@ export class Game extends Scene {
       }
 
       const holeStackPositions = new Map<number, { offset: number; depth: number }>();
-      const firstTurnOrderIndex = Math.max(0, activeTurnOrderIndex);
       args.holes.forEach((hole) => {
         const stack = args.marbles
           .filter((marble) =>
             marble.alive &&
             marble.deployed &&
-            marble.inHole &&
-            marble.currentHole === hole.id
+            (
+              marble.inHole && marble.currentHole === hole.id ||
+              marble.id === args.activeMarbleId &&
+              Phaser.Math.Distance.Between(marble.x, marble.y, hole.x, hole.y) <= 20
+            )
           )
           .sort((a, b) => {
+            if (a.id === args.activeMarbleId) return -1;
+            if (b.id === args.activeMarbleId) return 1;
             const aOrderIndex = args.turnOrder.indexOf(a.id);
             const bOrderIndex = args.turnOrder.indexOf(b.id);
-            const aTurnDistance = (aOrderIndex - firstTurnOrderIndex + args.turnOrder.length) %
-              args.turnOrder.length;
-            const bTurnDistance = (bOrderIndex - firstTurnOrderIndex + args.turnOrder.length) %
-              args.turnOrder.length;
-            return aTurnDistance - bTurnDistance;
+            return aOrderIndex - bOrderIndex;
           });
 
         stack.forEach((marble, index) => {
@@ -296,15 +400,19 @@ export class Game extends Scene {
           return;
         }
 
+        const turnOrderIndex = args.turnOrder.indexOf(marble.id);
+        const marbleDepth = marble.id === args.activeMarbleId
+          ? 150
+          : stackPosition?.depth ?? 100 + args.turnOrder.length - turnOrderIndex;
         img.setX(renderX);
         img.setY(renderY);
-        img.setDepth(stackPosition?.depth ?? 100);
+        img.setDepth(marbleDepth);
         img.setAlpha(marble.id === highlightedTurnMarbleId ? img.alpha : 1);
         img.setTexture(marble.lion ? "marble_red" : "marble_green");
         
         const txt = marbleLabelTexts[i];
         txt.setPosition(renderX, renderY);
-        txt.setDepth((stackPosition?.depth ?? 100) + 1);
+        txt.setDepth(marbleDepth + 1);
         txt.setColor("#000000");
         txt.setAlpha(1);
       });

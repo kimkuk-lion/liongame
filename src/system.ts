@@ -50,6 +50,8 @@ type State =
 
 const MARBLE_RADIUS = 25 / 2;
 const HOLE_ENTRY_RADIUS = 10;
+const HOLE_CAPTURE_PATH_END_RATIO = 0.8;
+const CLOSE_TARGET_HOLE_DISTANCE = 40;
 const LION_RECOIL_DISTANCE = 70;
 const LION_RECOIL_DURATION = 900;
 const LION_RECOIL_ANGLE_STDDEV = 8 * (Math.PI / 180);
@@ -312,21 +314,42 @@ export class System {
     const targetDistance = Math.sqrt(dx * dx + dy * dy);
     const targetAngle = Math.atan2(dy, dx);
 
-    const distanceStdDev = targetDistance * 0.25;  
-    const angleStdDev = 15 * (Math.PI / 180);       
+    const isChoosingFork =
+      marble.hole === 3 &&
+      !marble.visitedHoles.includes(3) &&
+      !marble.visitedHoles.includes(4);
+    const targetHole = (isChoosingFork ? [3, 4] : [marble.hole])
+      .map((holeId) => this.holes[holeId])
+      .sort((a, b) =>
+        this.distanceToHole(marble, a.id) - this.distanceToHole(marble, b.id)
+      )[0];
+    const isShortPutt =
+      !isOrderingShot &&
+      !marble.lion &&
+      targetMarbleId === undefined &&
+      this.distanceToHole(marble, targetHole.id) <= CLOSE_TARGET_HOLE_DISTANCE;
 
-    const minDistance = targetDistance - distanceStdDev * 3;
-    const maxDistance = targetDistance + distanceStdDev * 3;
-    const actualDistance = randomNormalBounded(
-      targetDistance,
-      distanceStdDev,
-      minDistance,
-      maxDistance
-    );
-    const actualAngle = randomNormalBounded(targetAngle, angleStdDev, -Infinity, Infinity);
+    if (isShortPutt) {
+      x = targetHole.x;
+      y = targetHole.y;
+    } else {
+      const distanceStdDev = targetDistance * 0.25;
+      const angleStdDev = 15 * (Math.PI / 180) *
+        (this.distanceToHole(marble, targetHole.id) <= CLOSE_TARGET_HOLE_DISTANCE ? 0.5 : 1);
 
-    x = startX + actualDistance * Math.cos(actualAngle);
-    y = startY + actualDistance * Math.sin(actualAngle);
+      const minDistance = targetDistance - distanceStdDev * 3;
+      const maxDistance = targetDistance + distanceStdDev * 3;
+      const actualDistance = randomNormalBounded(
+        targetDistance,
+        distanceStdDev,
+        minDistance,
+        maxDistance
+      );
+      const actualAngle = randomNormalBounded(targetAngle, angleStdDev, -Infinity, Infinity);
+
+      x = startX + actualDistance * Math.cos(actualAngle);
+      y = startY + actualDistance * Math.sin(actualAngle);
+    }
 
     x = clamp(x, 10, GAME_WIDTH - 10);
     y = clamp(y, 10, GAME_HEIGHT - 10);
@@ -346,7 +369,16 @@ export class System {
       marble.x = startX + ((x - startX) / max) * i;
       marble.y = startY + ((y - startY) / max) * i;
       
-      if (this.checkCollision(marble, x, y, previousX, previousY, startingHoleId)) {
+      if (this.checkCollision(
+        marble,
+        x,
+        y,
+        startX,
+        startY,
+        previousX,
+        previousY,
+        startingHoleId
+      )) {
         return; 
       }
 
@@ -470,6 +502,8 @@ export class System {
     marble: Marble,
     clickX: number,
     clickY: number,
+    startX: number,
+    startY: number,
     previousX: number,
     previousY: number,
     startingHoleId: number | null
@@ -483,8 +517,21 @@ export class System {
         return true;
       }
     } else if (!marble.lion) {
+      const pathLength = Math.hypot(clickX - startX, clickY - startY);
+      const isNearDestination =
+        Math.hypot(marble.x - startX, marble.y - startY) >=
+        pathLength * HOLE_CAPTURE_PATH_END_RATIO;
+      const isChoosingFork =
+        marble.hole === 3 &&
+        !marble.visitedHoles.includes(3) &&
+        !marble.visitedHoles.includes(4);
       const collidedHole = this.holes.find((hole) =>
         collision(hole.x, hole.y, marble.x, marble.y, HOLE_ENTRY_RADIUS, 0) &&
+        (
+          hole.id === marble.hole ||
+          isChoosingFork && (hole.id === 3 || hole.id === 4) ||
+          isNearDestination
+        ) &&
         !(
           hole.id === startingHoleId &&
           collision(hole.x, hole.y, previousX, previousY, HOLE_ENTRY_RADIUS, 0)
@@ -492,10 +539,6 @@ export class System {
       );
 
       if (collidedHole) {
-        const isChoosingFork =
-          marble.hole === 3 &&
-          !marble.visitedHoles.includes(3) &&
-          !marble.visitedHoles.includes(4);
         const isTargetHole =
           collidedHole.id === marble.hole ||
           (isChoosingFork && (collidedHole.id === 3 || collidedHole.id === 4));

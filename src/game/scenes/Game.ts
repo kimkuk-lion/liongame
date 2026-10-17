@@ -108,6 +108,7 @@ export class Game extends Scene {
     
     // 레이어 정렬 (Depth 0: 구멍, 50: 사자 후광, 99: 조준선, 100: 구슬, 101: 텍스트 번호)
     const guideGraphics = this.add.graphics().setDepth(1000);
+    const radarGraphics = this.add.graphics().setDepth(1000);
     const dragAimGraphics = this.add.graphics().setDepth(102);
     let closeMarbles: { id: number; x: number; y: number }[] = [];
     let canMove = false;
@@ -115,6 +116,9 @@ export class Game extends Scene {
     let lionTurn = false;
     let highlightedTurnMarbleId: number | null = null;
     let lionPulseTween: Phaser.Tweens.Tween | null = null;
+    let radarTween: Phaser.Tweens.Tween | null = null;
+    const radarRotation = { angle: 0 };
+    let radarMarbleId: number | null = null;
     let dragStart: { x: number; y: number } | null = null;
     let selectedCloseMarbleId: number | null = null;
     let firstHoleHintActive = false;
@@ -248,6 +252,38 @@ export class Game extends Scene {
         activeMarble?.alive
         ? activeMarble
         : null;
+      const activeRadarMarble = args.state === "wait_move" &&
+        activeMarble?.alive &&
+        activeMarble.deployed &&
+        activeMarble.lion
+        ? activeMarble
+        : null;
+      const activeRadarMarbleId = activeRadarMarble?.id ?? null;
+      if (activeRadarMarbleId !== radarMarbleId) {
+        radarTween?.stop();
+        radarTween = null;
+        radarGraphics.clear();
+        radarMarbleId = activeRadarMarbleId;
+        if (activeRadarMarble) {
+          radarRotation.angle = 0;
+          radarTween = this.tweens.add({
+            targets: radarRotation,
+            angle: Math.PI * 2,
+            duration: 6000,
+            ease: "Linear",
+            repeat: -1,
+            onUpdate: () => {
+              radarGraphics.clear();
+              drawRadarArrow(
+                radarGraphics,
+                activeRadarMarble.x,
+                activeRadarMarble.y,
+                radarRotation.angle
+              );
+            },
+          });
+        }
+      }
       if (activeTurnMarble?.id !== highlightedTurnMarbleId) {
         lionPulseTween?.stop();
         if (highlightedTurnMarbleId !== null) {
@@ -270,11 +306,6 @@ export class Game extends Scene {
       collisionHighlightGraphics.clear();
       closeMarbleHint.setVisible(false);
       closeMarbles = [];
-      if (lionTurn) {
-        closeMarbleHint.setText("근접한 구슬을 클릭해 잡으세요");
-      } else {
-        closeMarbleHint.setText("멀리 보내고 싶은 구슬을 클릭/드래그 하세요");
-      }
 
       if (args.state === "wait_move") {
         if (activeMarble?.deployed && activeMarble.alive) {
@@ -325,9 +356,12 @@ export class Game extends Scene {
               });
               collisionHighlightGraphics.strokePoints(ellipsePoints, true);
             });
-            closeMarbleHint
-              .setPosition(activeMarble.x, activeMarble.y - 45)
-              .setVisible(true);
+            if (!lionTurn) {
+              closeMarbleHint
+                .setText("근접 구슬을 클릭하거나,\n클릭&드래그로 멀리 보낼 수 있어요")
+                .setPosition(activeMarble.x, activeMarble.y - 45)
+                .setVisible(true);
+            }
           }
         }
       }
@@ -624,6 +658,53 @@ function drawArrowSolidLine(graphics: Phaser.GameObjects.Graphics, mx: number, m
   graphics.moveTo(endX, endY);
   graphics.lineTo(leftWingX, leftWingY);
   graphics.lineTo(rightWingX, rightWingY);
+  graphics.closePath();
+  graphics.fillPath();
+}
+
+function drawRadarArrow(
+  graphics: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  angle: number
+) {
+  const startDistance = 16;
+  const endDistance = 88;
+  const directionX = Math.cos(angle);
+  const directionY = Math.sin(angle);
+  const startX = x + directionX * startDistance;
+  const startY = y + directionY * startDistance;
+  const endX = x + directionX * endDistance;
+  const endY = y + directionY * endDistance;
+  const dashLength = 8;
+  const dashGap = 6;
+
+  graphics.lineStyle(2, 0x0000ff, 0.75);
+  graphics.fillStyle(0x0000ff, 0.75);
+  for (let distance = 0; distance < endDistance - startDistance; distance += dashLength + dashGap) {
+    const dashEnd = Math.min(distance + dashLength, endDistance - startDistance);
+    graphics.strokeLineShape(
+      new Phaser.Geom.Line(
+        startX + directionX * distance,
+        startY + directionY * distance,
+        startX + directionX * dashEnd,
+        startY + directionY * dashEnd
+      )
+    );
+  }
+
+  const arrowLength = 12;
+  const arrowAngle = Math.PI / 7;
+  graphics.beginPath();
+  graphics.moveTo(endX, endY);
+  graphics.lineTo(
+    endX - arrowLength * Math.cos(angle - arrowAngle),
+    endY - arrowLength * Math.sin(angle - arrowAngle)
+  );
+  graphics.lineTo(
+    endX - arrowLength * Math.cos(angle + arrowAngle),
+    endY - arrowLength * Math.sin(angle + arrowAngle)
+  );
   graphics.closePath();
   graphics.fillPath();
 }

@@ -56,7 +56,7 @@ const LION_RECOIL_DISTANCE = 70;
 const LION_RECOIL_DURATION = 900;
 const LION_RECOIL_ANGLE_STDDEV = 8 * (Math.PI / 180);
 const ORDER_RESULT_REVEAL_DELAY = 1500;
-export const CLOSE_MARBLE_THRESHOLD = 50;
+export const CLOSE_MARBLE_THRESHOLD = 40;
 
 export class System {
   private turn: number = 0;

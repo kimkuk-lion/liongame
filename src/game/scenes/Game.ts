@@ -65,7 +65,7 @@ export class Game extends Scene {
     }).setOrigin(0, 0.5).setDepth(200).setVisible(false);
     const firstHoleHint = this.add.text(
       20,
-      1215,
+      1135,
       "구멍에 넣으면서 전진합니다.\n다른 구슬 맞히면 점프합니다.",
       {
         color: "#3d3022",
@@ -77,6 +77,17 @@ export class Game extends Scene {
         align: "left",
       }
     ).setOrigin(0, 0.5).setDepth(200).setVisible(false);
+    const firstHoleCloseMarbleHint = this.add.text(
+      20,
+      firstHoleHint.y + firstHoleHint.height / 2 + 8,
+      "근접 구슬은 클릭하거나,\n클릭&드래그로 멀리 보낼 수 있어요.",
+      {
+        color: "#8000a8",
+        fontSize: 22,
+        fontStyle: "bold",
+        lineSpacing: 8,
+      }
+    ).setOrigin(0, 0).setDepth(200).setVisible(false);
     const lionHint = this.add.text(
       20,
       1215,
@@ -91,16 +102,6 @@ export class Game extends Scene {
         align: "left",
       }
     ).setOrigin(0, 0.5).setDepth(200).setVisible(false);
-    const closeMarbleHint = this.add.text(
-      -9990,
-      0,
-      "멀리 보내고 싶은 구슬을 클릭/드래그 하세요",
-      {
-        color: "#8000a8",
-        fontSize: 22,
-        fontStyle: "bold",
-      }
-    ).setOrigin(0.5).setDepth(200).setVisible(false);
     const collisionHighlightGraphics = this.add.graphics().setDepth(98);
     const turnMarkerGraphics = this.add.graphics().setDepth(202);
     
@@ -219,6 +220,7 @@ export class Game extends Scene {
       }
       lionHint.setVisible(lionHintActive);
       firstHoleHint.setVisible(firstHoleHintActive && !lionHintActive);
+      firstHoleCloseMarbleHint.setVisible(firstHoleHintActive && !lionHintActive);
 
       // 실시간 구슬별 득점 현황 갱신
       args.marbles.forEach((marble, i) => {
@@ -304,7 +306,6 @@ export class Game extends Scene {
 
       guideGraphics.clear();
       collisionHighlightGraphics.clear();
-      closeMarbleHint.setVisible(false);
       closeMarbles = [];
 
       if (args.state === "wait_move") {
@@ -356,12 +357,6 @@ export class Game extends Scene {
               });
               collisionHighlightGraphics.strokePoints(ellipsePoints, true);
             });
-            if (!lionTurn) {
-              closeMarbleHint
-                .setText("근접 구슬을 클릭하거나,\n클릭&드래그로 멀리 보낼 수 있어요")
-                .setPosition(activeMarble.x, activeMarble.y - 45)
-                .setVisible(true);
-            }
           }
         }
       }
